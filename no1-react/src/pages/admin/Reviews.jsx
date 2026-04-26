@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { Star, Check, Trash2, Heart, MessageSquare, ShieldCheck, Loader2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import api from '../../api';
+import { db } from '../../firebase';
+import { collection, getDocs, updateDoc, deleteDoc, doc, query, orderBy } from 'firebase/firestore';
 
 const Reviews = () => {
   const [reviews, setReviews] = useState([]);
@@ -13,8 +14,9 @@ const Reviews = () => {
 
   const fetchReviews = async () => {
     try {
-      const res = await api.get('/reviews');
-      setReviews(res.data);
+      const q = query(collection(db, 'reviews'), orderBy('created_at', 'desc'));
+      const snapshot = await getDocs(q);
+      setReviews(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
     } catch (err) {
       console.error('Error fetching reviews:', err);
     } finally {
@@ -24,29 +26,29 @@ const Reviews = () => {
 
   const handleApprove = async (id) => {
     try {
-      await api.put(`/reviews/${id}/approve`);
+      await updateDoc(doc(db, 'reviews', String(id)), { is_approved: 1 });
       setReviews(reviews.map(r => r.id === id ? { ...r, is_approved: 1 } : r));
     } catch (err) {
-      alert('Error approving review');
+      alert('Error approving review: ' + err.message);
     }
   };
 
   const handleFeature = async (id, isFeatured) => {
     try {
-      await api.put(`/reviews/${id}/feature`, { isFeatured: !isFeatured });
-      setReviews(reviews.map(r => r.id === id ? { ...r, is_featured: !isFeatured ? 1 : 0 } : r));
+      await updateDoc(doc(db, 'reviews', String(id)), { is_featured: isFeatured ? 0 : 1 });
+      setReviews(reviews.map(r => r.id === id ? { ...r, is_featured: isFeatured ? 0 : 1 } : r));
     } catch (err) {
-      alert('Error updating featured status');
+      alert('Error updating featured status: ' + err.message);
     }
   };
 
   const handleDelete = async (id) => {
     if (!window.confirm('Are you sure you want to delete this review?')) return;
     try {
-      await api.delete(`/reviews/${id}`);
+      await deleteDoc(doc(db, 'reviews', String(id)));
       setReviews(reviews.filter(r => r.id !== id));
     } catch (err) {
-      alert('Error deleting review');
+      alert('Error deleting review: ' + err.message);
     }
   };
 
@@ -67,7 +69,7 @@ const Reviews = () => {
         {!loading && reviews.length === 0 && (
           <div className="glass" style={{ textAlign: 'center', padding: '5rem', opacity: 0.5 }}>
             <MessageSquare size={64} style={{ marginBottom: '1.5rem', opacity: 0.2 }} />
-            <h3>No reviews found in local storage</h3>
+            <h3>No reviews found</h3>
           </div>
         )}
 
@@ -96,12 +98,12 @@ const Reviews = () => {
                   </div>
                   <div>
                     <div style={{ fontWeight: 800, fontSize: '1.2rem' }}>{r.customer_name || 'Anonymous User'}</div>
-                    <div style={{ fontSize: '0.85rem', opacity: 0.4 }}>{r.service || 'General Service'}</div>
+                    <div style={{ fontSize: '0.85rem', opacity: 0.4 }}>{r.service_name || r.service || 'General Service'}</div>
                   </div>
                 </div>
                 <div style={{ display: 'flex', gap: '0.3rem', color: 'var(--accent)' }}>
-                  {[...Array(5)].map((_, i) => (
-                    <Star key={i} size={18} fill={i < (r.rating || 5) ? 'var(--accent)' : 'none'} opacity={i < (r.rating || 5) ? 1 : 0.2} />
+                  {[...Array(5)].map((_, idx) => (
+                    <Star key={idx} size={18} fill={idx < (r.rating || 5) ? 'var(--accent)' : 'none'} opacity={idx < (r.rating || 5) ? 1 : 0.2} />
                   ))}
                 </div>
               </div>

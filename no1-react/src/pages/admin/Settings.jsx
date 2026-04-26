@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { Save, Loader2, Globe, Phone, Mail, MapPin, MessageSquare, Image as ImageIcon, Upload } from 'lucide-react';
 import { motion } from 'framer-motion';
-import api from '../../api';
+import { db, storage } from '../../firebase';
+import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 
 const Settings = () => {
   const [settings, setSettings] = useState({
@@ -16,6 +18,7 @@ const Settings = () => {
   });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [uploading, setUploading] = useState(false);
 
   useEffect(() => {
     fetchSettings();
@@ -23,8 +26,10 @@ const Settings = () => {
 
   const fetchSettings = async () => {
     try {
-      const res = await api.get('/settings');
-      if (res.data) setSettings(res.data);
+      const docSnap = await getDoc(doc(db, 'settings', 'main'));
+      if (docSnap.exists()) {
+        setSettings(docSnap.data());
+      }
     } catch (err) {
       console.error('Error fetching settings:', err);
     } finally {
@@ -32,11 +37,28 @@ const Settings = () => {
     }
   };
 
+  const handleHeroUpload = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    setUploading(true);
+    try {
+      const fileRef = ref(storage, `settings/${Date.now()}_${file.name}`);
+      await uploadBytes(fileRef, file);
+      const url = await getDownloadURL(fileRef);
+      setSettings({ ...settings, hero_image: url });
+    } catch (err) {
+      alert('Upload failed: ' + err.message);
+    } finally {
+      setUploading(false);
+    }
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setSaving(true);
     try {
-      await api.put('/settings', settings);
+      await setDoc(doc(db, 'settings', 'main'), settings);
       alert('✅ Settings updated successfully! Changes will reflect on the homepage.');
     } catch (err) {
       alert('❌ Error updating settings: ' + err.message);
@@ -93,7 +115,7 @@ const Settings = () => {
             <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.8rem', opacity: 0.6 }}><ImageIcon size={16} /> Hero Section Image</label>
             <div style={{ display: 'flex', gap: '2rem', alignItems: 'flex-start' }}>
               <div style={{ width: '200px', height: '120px', borderRadius: '12px', overflow: 'hidden', border: '1px solid var(--border)', background: 'rgba(0,0,0,0.2)' }}>
-                <img src={settings.hero_image?.startsWith('http') ? settings.hero_image : `http://127.0.0.1:5000${settings.hero_image}`} alt="Hero Preview" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                <img src={settings.hero_image || '/assets/hero.png'} alt="Hero Preview" style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={(e) => e.target.src = '/assets/hero.png'} />
               </div>
               <div style={{ flex: 1 }}>
                 <input 
@@ -101,21 +123,11 @@ const Settings = () => {
                   id="hero-upload" 
                   hidden 
                   accept="image/*"
-                  onChange={async (e) => {
-                    const file = e.target.files[0];
-                    if (!file) return;
-                    const formData = new FormData();
-                    formData.append('files', file);
-                    try {
-                      const res = await api.post('/upload', formData);
-                      setSettings({ ...settings, hero_image: res.data.files[0].url.replace('http://127.0.0.1:5000', '') });
-                    } catch (err) {
-                      alert('Upload failed: ' + err.message);
-                    }
-                  }}
+                  onChange={handleHeroUpload}
                 />
                 <label htmlFor="hero-upload" className="btn btn-soft" style={{ gap: '0.8rem', cursor: 'pointer' }}>
-                  <Upload size={18} /> Change Hero Image
+                  {uploading ? <Loader2 className="spin" size={18} /> : <Upload size={18} />} 
+                  {uploading ? 'Uploading...' : 'Change Hero Image'}
                 </label>
                 <p style={{ fontSize: '0.8rem', opacity: 0.4, marginTop: '1rem' }}>Recommended size: 1920x1080px. High quality images work best.</p>
               </div>

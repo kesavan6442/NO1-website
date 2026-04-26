@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import { Link, useNavigate } from 'react-router-dom';
-import api from '../api';
+import { db } from '../firebase';
+import { collection, addDoc } from 'firebase/firestore';
 
 const Signup = () => {
   const [name, setName] = useState('');
@@ -14,11 +15,16 @@ const Signup = () => {
     e.preventDefault();
     setLoading(true);
     try {
-      await api.post('/signup', { name, email, password });
+      await addDoc(collection(db, 'users'), { 
+        name, 
+        email, 
+        password,
+        role: 'customer' 
+      });
       alert('Account created successfully!');
       navigate('/login');
     } catch (err) {
-      alert('Signup failed: ' + (err.response?.data?.error || err.message));
+      alert('Signup failed: ' + err.message);
     } finally {
       setLoading(false);
     }

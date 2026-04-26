@@ -2,7 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ChevronLeft, Star, Clock, MapPin, ZoomIn, X, Film, CheckCircle2 } from 'lucide-react';
-import api from '../api';
+import { db } from '../firebase';
+import { collection, getDocs, doc, getDoc } from 'firebase/firestore';
 
 const ServiceDetail = () => {
   const { id } = useParams();
@@ -15,21 +16,22 @@ const ServiceDetail = () => {
     const handleResize = () => setIsMobile(window.innerWidth < 768);
     window.addEventListener('resize', handleResize);
     
-    const fetchService = async () => {
+    const fetchServiceData = async () => {
       setLoading(true);
       try {
-        const res = await api.get('/services');
-        // Handle both numeric IDs (database) and string IDs (hardcoded)
-        const found = res.data.find(s => String(s.id) === id || s.name.toLowerCase().replace(/\s+/g, '-') === id);
+        let found = null;
+        
+        // Fetch all services and search by ID or slug
+        const snapshot = await getDocs(collection(db, 'services'));
+        const allServices = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+        found = allServices.find(s => String(s.id) === id || (s.name && s.name.toLowerCase().replace(/\s+/g, '-') === id));
         
         if (found) {
-          // Fetch additional gallery media
+          // Firebase stores media inside the document under `media`
           let gallery = [{ url: found.image || '/assets/hero.png', type: 'image' }];
-          try {
-            const mediaRes = await api.get(`/services/${found.id}/media`);
-            gallery = [...gallery, ...mediaRes.data];
-          } catch (err) {
-            console.error('Error fetching service media:', err);
+          if (found.media && Array.isArray(found.media)) {
+            gallery = [...gallery, ...found.media];
           }
 
           setService({
@@ -39,18 +41,6 @@ const ServiceDetail = () => {
             img: found.image || '/assets/hero.png',
             gallery: gallery
           });
-        } else {
-          // Fallback for hardcoded ones if not in DB
-          const hardcoded = {
-            drums: { title: 'Traditional Chanda Melam', cat: 'Drums', desc: 'Kerala style grand percussion.', img: '/assets/drums.png' },
-            papershot: { title: 'Paper Shot & FX', cat: 'Effects', desc: 'Grand entry paper cannon shots.', img: '/assets/papershot.png' },
-            teddy: { title: 'Teddy Show', cat: 'Kids Fun', desc: 'Funny mascots for children.', img: '/assets/teddy.png' },
-            djlights: { title: 'LED Backdrop', cat: 'Lighting', desc: 'Programmable stage lighting.', img: '/assets/djlights.png' }
-          };
-          if (hardcoded[id]) {
-            const s = hardcoded[id];
-            setService({ ...s, gallery: [{ url: s.img, type: 'image' }] });
-          }
         }
       } catch (err) { 
         console.error('Error fetching service:', err); 
@@ -59,7 +49,7 @@ const ServiceDetail = () => {
       }
     };
 
-    fetchService();
+    fetchServiceData();
     return () => window.removeEventListener('resize', handleResize);
   }, [id]);
 
@@ -98,7 +88,7 @@ const ServiceDetail = () => {
       </AnimatePresence>
 
       <section style={{ position: 'relative', height: isMobile ? '60vh' : '70vh', overflow: 'hidden' }}>
-        <img src={service.img} style={{ width: '100%', height: '100%', objectFit: 'cover', cursor: 'zoom-in' }} alt={service.title} onClick={() => setSelectedItem({url: service.img, type: 'image'})} />
+        <img src={service.img} style={{ width: '100%', height: '100%', objectFit: 'cover', cursor: 'zoom-in' }} alt={service.title} onClick={() => setSelectedItem({url: service.img, type: 'image'})} onError={(e) => e.target.src = '/assets/hero.png'} />
         <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(transparent, var(--bg-dark))' }}></div>
         <div className="container" style={{ position: 'absolute', bottom: isMobile ? '2rem' : '4rem', left: '50%', transform: 'translateX(-50%)', width: '90%' }}>
           <Link to="/" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--accent)', textDecoration: 'none', marginBottom: '2rem', fontWeight: 700 }}><ChevronLeft size={20} /> Back to Services</Link>
@@ -132,7 +122,7 @@ const ServiceDetail = () => {
                     {item.type === 'video' ? (
                       <video src={item.url} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                     ) : (
-                      <img src={item.url} style={{ width: '100%', height: '100%', objectFit: 'cover' }} alt="Gallery" />
+                      <img src={item.url} style={{ width: '100%', height: '100%', objectFit: 'cover' }} alt="Gallery" onError={(e) => { e.target.src = '/assets/hero.png' }} />
                     )}
                     <div className="img-overlay" style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: 0, transition: '0.3s' }}>
                       <ZoomIn size={30} color="#fff" />
@@ -151,7 +141,7 @@ const ServiceDetail = () => {
               
               <div style={{ marginTop: '2rem', paddingTop: '2rem', borderTop: '1px solid var(--border)' }}>
                 <p style={{ fontSize: '0.85rem', opacity: 0.5, marginBottom: '1rem' }}>Need immediate help?</p>
-                <a href="https://wa.me/911234567890" className="btn btn-soft" style={{ width: '100%', gap: '0.5rem' }}>
+                <a href="https://wa.me/911234567890" target="_blank" rel="noreferrer" className="btn btn-soft" style={{ width: '100%', gap: '0.5rem' }}>
                   <CheckCircle2 size={18} color="#25D366" />
                   WhatsApp Us
                 </a>

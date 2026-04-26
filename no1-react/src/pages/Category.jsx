@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import api from '../api';
+import { db } from '../firebase';
+import { collection, getDocs } from 'firebase/firestore';
 
 const Category = () => {
   const { type } = useParams();
@@ -11,8 +12,9 @@ const Category = () => {
     const fetchServices = async () => {
       setLoading(true);
       try {
-        const res = await api.get('/services');
-        const filtered = res.data.filter(s => 
+        const snapshot = await getDocs(collection(db, 'services'));
+        const allServices = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        const filtered = allServices.filter(s => 
           s.category?.toLowerCase() === type?.toLowerCase() || 
           s.category?.toLowerCase().includes(type?.toLowerCase())
         );
@@ -34,7 +36,7 @@ const Category = () => {
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '2rem', padding: '2rem' }}>
           {services.map(s => (
             <div key={s.id} style={{ border: '1px solid #333', padding: '1rem', borderRadius: '10px' }}>
-              <img src={s.image || '/assets/hero.png'} alt={s.name} style={{ width: '100%', height: '200px', objectFit: 'cover' }} />
+              <img src={s.image || '/assets/hero.png'} alt={s.name} style={{ width: '100%', height: '200px', objectFit: 'cover' }} onError={(e) => { e.target.src = '/assets/hero.png' }} />
               <h3>{s.name}</h3>
               <p>{s.description}</p>
             </div>

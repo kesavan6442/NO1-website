@@ -2,7 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { Phone, Mail, MapPin, MessageSquare } from 'lucide-react';
-import api from '../api';
+import { db } from '../firebase';
+import { collection, getDocs, addDoc, doc, getDoc } from 'firebase/firestore';
 
 const Home = () => {
   const navigate = useNavigate();
@@ -18,31 +19,52 @@ const Home = () => {
   });
 
   useEffect(() => {
-    // Fetch categories from SQL
-    api.get('/categories')
-      .then(res => {
-        const data = res.data.map(c => ({
-          id: c.id,
-          title: c.name,
-          tag: 'Service',
-          desc: `Professional ${c.name} services for your event.`,
-          img: c.cover_image || '/assets/hero.png'
-        }));
+    // Fetch categories from API
+    const fetchCategories = async () => {
+      try {
+        const snapshot = await getDocs(collection(db, 'categories'));
+        const data = snapshot.docs.map(doc => {
+          const cat = doc.data();
+          return {
+            id: doc.id,
+            ...cat,
+            title: cat.name,
+            tag: 'Service',
+            desc: `Professional ${cat.name} services for your event.`,
+            img: cat.cover_image || '/assets/hero.png'
+          };
+        });
         setCategories(data);
-      })
-      .catch(err => console.error('Error fetching categories:', err));
+      } catch (err) {
+        console.error('Error fetching categories:', err);
+      }
+    };
 
-    // Fetch services for fallback/search
-    api.get('/services')
-      .then(res => setDbServices(res.data))
-      .catch(err => console.error('Error fetching services:', err));
+    // Fetch services from API
+    const fetchServices = async () => {
+      try {
+        const snapshot = await getDocs(collection(db, 'services'));
+        setDbServices(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+      } catch (err) {
+        console.error('Error fetching services:', err);
+      }
+    };
 
-    // Fetch site settings
-    api.get('/settings')
-      .then(res => {
-        if (res.data) setSettings(res.data);
-      })
-      .catch(err => console.error('Error fetching settings:', err));
+    // Fetch settings from API
+    const fetchSettings = async () => {
+      try {
+        const docSnap = await getDoc(doc(db, 'settings', 'main'));
+        if (docSnap.exists()) {
+          setSettings(docSnap.data());
+        }
+      } catch (err) {
+        console.error('Error fetching settings:', err);
+      }
+    };
+
+    fetchCategories();
+    fetchServices();
+    fetchSettings();
   }, []);
 
   const allCategories = categories;
@@ -68,7 +90,7 @@ const Home = () => {
           <motion.div initial={{ opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1 }} transition={{ duration: 0.8 }} style={{ position: 'relative', width: '100%' }}>
             <div style={{ position: 'absolute', top: '-20px', left: '-20px', width: '100px', height: '100px', background: 'var(--accent)', borderRadius: '20px', zIndex: -1, opacity: 0.5 }}></div>
             <img 
-              src={settings.hero_image?.startsWith('http') ? settings.hero_image : `${import.meta.env.VITE_IMAGE_BASE_URL || 'http://127.0.0.1:5000'}${settings.hero_image || '/assets/hero.png'}`} 
+              src={settings.hero_image || '/assets/hero.png'} 
               style={{ 
                 width: '100%', 
                 height: 'auto',
@@ -77,6 +99,11 @@ const Home = () => {
                 border: '2px solid rgba(255,255,255,0.1)' 
               }} 
               alt="Hero" 
+              onError={(e) => {
+                if (e.target.src !== '/assets/hero.png') {
+                  e.target.src = '/assets/hero.png';
+                }
+              }}
             />
           </motion.div>
         </div>
@@ -100,7 +127,12 @@ const Home = () => {
               >
                 <Link to={`/service/${service.id}`} className="p-card">
                   <div className="glass">
-                    <img src={service.image || '/assets/hero.png'} alt={service.name} style={{ width: '100%', height: '220px', objectFit: 'cover', borderRadius: '16px' }} />
+                    <img 
+                      src={service.image || '/assets/hero.png'} 
+                      alt={service.name} 
+                      style={{ width: '100%', height: '220px', objectFit: 'cover', borderRadius: '16px' }} 
+                      onError={(e) => { e.target.src = '/assets/hero.png' }}
+                    />
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
                        <span className="card-tag">{service.category}</span>
                        <span style={{ fontWeight: 800, color: 'var(--accent)' }}>₹{service.price}</span>
@@ -135,7 +167,11 @@ const Home = () => {
               const formData = new FormData(e.target);
               const data = Object.fromEntries(formData.entries());
               try {
-                await api.post('/bookings', data);
+                await addDoc(collection(db, 'bookings'), {
+                  ...data,
+                  created_at: new Date().toISOString(),
+                  status: 'pending'
+                });
                 alert('✅ Booking Request Sent! We will call you soon.');
                 e.target.reset();
               } catch (err) {

@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import api from '../api';
+import { db } from '../firebase';
+import { collection, getDocs, addDoc } from 'firebase/firestore';
 
 const Booking = () => {
   const [formData, setFormData] = useState({
@@ -17,21 +18,30 @@ const Booking = () => {
   const [categories, setCategories] = useState([]);
 
   useEffect(() => {
-    api.get('/categories')
-      .then(res => {
-        setCategories(res.data);
-        if (res.data.length > 0) {
-          setFormData(prev => ({ ...prev, service: res.data[0].name }));
+    const fetchCategories = async () => {
+      try {
+        const querySnapshot = await getDocs(collection(db, "categories"));
+        const data = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        setCategories(data);
+        if (data.length > 0) {
+          setFormData(prev => ({ ...prev, service: data[0].name }));
         }
-      })
-      .catch(err => console.error('Error fetching categories:', err));
+      } catch (err) {
+        console.error('Error fetching categories:', err);
+      }
+    };
+    fetchCategories();
   }, []);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
     try {
-      await api.post('/bookings', formData);
+      await addDoc(collection(db, "bookings"), {
+        ...formData,
+        status: 'pending',
+        created_at: new Date().toISOString()
+      });
       setSuccess(true);
     } catch (err) {
       alert('Error saving booking: ' + err.message);

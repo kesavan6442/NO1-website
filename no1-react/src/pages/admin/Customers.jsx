@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Shield, ShieldOff, MoreVertical, Search, Users as UsersIcon, Mail, Calendar, Loader2 } from 'lucide-react';
-import api from '../../api';
+import { db } from '../../firebase';
+import { collection, getDocs, updateDoc, doc, query, where } from 'firebase/firestore';
 
 const Customers = () => {
   const [customers, setCustomers] = useState([]);
@@ -14,8 +15,9 @@ const Customers = () => {
 
   const fetchCustomers = async () => {
     try {
-      const res = await api.get('/customers');
-      setCustomers(res.data);
+      const q = query(collection(db, 'users'), where('role', '==', 'customer'));
+      const snapshot = await getDocs(q);
+      setCustomers(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
     } catch (err) {
       console.error('Error fetching customers:', err);
     } finally {
@@ -25,16 +27,16 @@ const Customers = () => {
 
   const toggleBlock = async (id, isBlocked) => {
     try {
-      await api.put(`/customers/${id}/block`, { isBlocked: !isBlocked });
+      await updateDoc(doc(db, 'users', String(id)), { is_blocked: !isBlocked ? 1 : 0 });
       setCustomers(customers.map(c => c.id === id ? { ...c, is_blocked: !isBlocked ? 1 : 0 } : c));
     } catch (err) {
-      alert('Error updating user status');
+      alert('Error updating user status: ' + err.message);
     }
   };
 
   const filteredCustomers = customers.filter(c => 
-    c.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
-    c.email.toLowerCase().includes(searchQuery.toLowerCase())
+    (c.name || '').toLowerCase().includes(searchQuery.toLowerCase()) || 
+    (c.email || '').toLowerCase().includes(searchQuery.toLowerCase())
   );
 
   return (
@@ -87,20 +89,20 @@ const Customers = () => {
                       <td style={{ padding: '1.5rem 2.5rem' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
                            <div style={{ width: '40px', height: '40px', borderRadius: '10px', background: 'rgba(255,255,255,0.05)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, color: 'var(--accent)' }}>
-                             {c.name[0].toUpperCase()}
+                             {(c.name?.[0] || 'U').toUpperCase()}
                            </div>
                            <div style={{ fontWeight: 700, fontSize: '1rem' }}>{c.name}</div>
                         </div>
                       </td>
                       <td style={{ padding: '1.5rem' }}>
                         <div style={{ fontSize: '0.9rem', opacity: 0.6, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                          <Mail size={14} /> {c.email}
+                           <Mail size={14} /> {c.email}
                         </div>
                       </td>
                       <td style={{ padding: '1.5rem' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.9rem' }}>
-                          <Calendar size={14} style={{ opacity: 0.4 }} />
-                          <span>{c.bookings || 0} Events</span>
+                           <Calendar size={14} style={{ opacity: 0.4 }} />
+                           <span>{c.bookings_count || 0} Events</span>
                         </div>
                       </td>
                       <td style={{ padding: '1.5rem' }}>
@@ -121,7 +123,6 @@ const Customers = () => {
                           <button onClick={() => toggleBlock(c.id, !!c.is_blocked)} title={!c.is_blocked ? 'Block User' : 'Unblock User'} style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', color: '#fff', padding: '0.6rem', borderRadius: '12px', cursor: 'pointer' }}>
                             {!c.is_blocked ? <Shield size={18} /> : <ShieldOff size={18} />}
                           </button>
-                          <button style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', color: '#fff', padding: '0.6rem', borderRadius: '12px', cursor: 'pointer' }}><MoreVertical size={18} /></button>
                         </div>
                       </td>
                     </motion.tr>

@@ -2,7 +2,8 @@ import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { Mail, Lock, Eye, EyeOff, User, ArrowLeft } from 'lucide-react';
-import api from '../api';
+import { db } from '../firebase';
+import { collection, query, where, getDocs } from 'firebase/firestore';
 
 const Login = () => {
   const [email, setEmail] = useState('');
@@ -15,17 +16,23 @@ const Login = () => {
     e.preventDefault();
     setLoading(true);
     try {
-      const response = await api.post('/login', { email, password });
-      const { token, user } = response.data;
+      const q = query(collection(db, 'users'), where('email', '==', email), where('password', '==', password));
+      const snapshot = await getDocs(q);
       
-      localStorage.setItem('token', token);
-      localStorage.setItem('user', JSON.stringify(user));
+      if (snapshot.empty) {
+        throw new Error('Invalid email or password');
+      }
+      
+      const userData = { id: snapshot.docs[0].id, ...snapshot.docs[0].data() };
+      
+      localStorage.setItem('token', 'firebase-mock-token');
+      localStorage.setItem('user', JSON.stringify(userData));
       localStorage.setItem('isLoggedIn', 'true');
-      localStorage.setItem('isAdmin', user.role === 'admin' ? 'true' : 'false');
+      localStorage.setItem('isAdmin', userData.role === 'admin' ? 'true' : 'false');
       
-      navigate(user.role === 'admin' ? '/admin' : '/');
+      navigate(userData.role === 'admin' ? '/admin' : '/');
     } catch (err) {
-      alert('Login failed: ' + (err.response?.data?.error || err.message));
+      alert('Login failed: ' + err.message);
     } finally {
       setLoading(false);
     }
@@ -48,8 +55,8 @@ const Login = () => {
             <div style={{ width: '64px', height: '64px', background: 'rgba(99, 102, 241, 0.1)', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 1.5rem' }}>
               <Lock className="w-8 h-8 text-primary" />
             </div>
-            <h1 style={{ fontSize: '2.5rem', marginBottom: '0.5rem' }}>Admin <span style={{ color: 'var(--accent)' }}>Login</span></h1>
-            <p style={{ opacity: 0.5 }}>Sign in to manage your website content.</p>
+            <h1 style={{ fontSize: '2.5rem', marginBottom: '0.5rem' }}>Welcome <span style={{ color: 'var(--accent)' }}>Back</span></h1>
+            <p style={{ opacity: 0.5 }}>Sign in to access your account.</p>
           </div>
 
           <form onSubmit={handleLogin} style={{ display: 'grid', gap: '1.5rem' }}>

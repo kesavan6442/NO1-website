@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { Plus, Edit2, Trash2, Layout, Database, Loader2, X, Save } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import api from '../../api';
+import { db } from '../../firebase';
+import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc } from 'firebase/firestore';
 
 const Categories = () => {
   const [categories, setCategories] = useState([]);
@@ -21,8 +22,8 @@ const Categories = () => {
 
   const fetchCategories = async () => {
     try {
-      const res = await api.get('/categories');
-      setCategories(res.data);
+      const snapshot = await getDocs(collection(db, 'categories'));
+      setCategories(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
     } catch (err) {
       console.error('Fetch error:', err);
     } finally {
@@ -36,7 +37,7 @@ const Categories = () => {
     
     setIsAdding(true);
     try {
-      await api.post('/categories', { name: newCat });
+      await addDoc(collection(db, 'categories'), { name: newCat });
       setNewCat('');
       await fetchCategories();
     } catch (err) {
@@ -56,14 +57,13 @@ const Categories = () => {
     e.preventDefault();
     setIsUpdating(true);
     try {
-      console.log('Updating category:', editingCategory.id, editFormData);
-      await api.put(`/categories/${editingCategory.id}`, editFormData);
+      await updateDoc(doc(db, 'categories', String(editingCategory.id)), editFormData);
       setIsEditModalOpen(false);
       await fetchCategories();
       alert('✅ Category updated successfully!');
     } catch (err) {
       console.error('Update Error:', err);
-      alert('❌ Error updating category: ' + (err.response?.data?.error || err.message));
+      alert('❌ Error updating category: ' + err.message);
     } finally {
       setIsUpdating(false);
     }
@@ -72,10 +72,10 @@ const Categories = () => {
   const handleDelete = async (id) => {
     if (!window.confirm('Are you sure you want to delete this category?')) return;
     try {
-      await api.delete(`/categories/${id}`);
+      await deleteDoc(doc(db, 'categories', String(id)));
       setCategories(categories.filter(c => c.id !== id));
     } catch (err) {
-      alert('Error deleting category');
+      alert('Error deleting category: ' + err.message);
     }
   };
 
@@ -126,7 +126,7 @@ const Categories = () => {
                   </div>
                   <div>
                     <h3 style={{ fontSize: '1.3rem', fontWeight: 700 }}>{cat.name}</h3>
-                    <p style={{ opacity: 0.4, fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '0.3rem' }}><Database size={12}/> Local SQL</p>
+                    <p style={{ opacity: 0.4, fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '0.3rem' }}><Database size={12}/> Firebase Firestore</p>
                   </div>
                 </div>
                 <div style={{ display: 'flex', gap: '0.8rem' }}>

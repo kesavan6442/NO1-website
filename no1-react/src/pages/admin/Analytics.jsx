@@ -13,8 +13,9 @@ import {
   ArcElement 
 } from 'chart.js';
 import { Line, Bar } from 'react-chartjs-2';
-import { Download, TrendingUp, Users, Calendar, IndianRupee } from 'lucide-react';
-import api from '../../api';
+import { Download, TrendingUp, Users, Calendar, Banknote } from 'lucide-react';
+import { db } from '../../firebase';
+import { collection, getDocs, query, where } from 'firebase/firestore';
 
 ChartJS.register(
   CategoryScale, 
@@ -37,9 +38,31 @@ const Analytics = () => {
   });
 
   useEffect(() => {
-    api.get('/stats')
-      .then(res => setStats(res.data))
-      .catch(err => console.error('Failed to fetch stats:', err));
+    const fetchStats = async () => {
+      try {
+        const bookingsSnap = await getDocs(collection(db, "bookings"));
+        const customersSnap = await getDocs(query(collection(db, "users"), where("role", "==", "customer")));
+        const categoriesSnap = await getDocs(collection(db, "categories"));
+        
+        let revenue = 0;
+        bookingsSnap.docs.forEach(doc => {
+          const data = doc.data();
+          if (data.status === 'completed' && data.total_price) {
+            revenue += Number(data.total_price);
+          }
+        });
+
+        setStats({
+          totalBookings: bookingsSnap.size,
+          totalCustomers: customersSnap.size,
+          totalCategories: categoriesSnap.size,
+          totalRevenue: revenue
+        });
+      } catch (err) {
+        console.error('Failed to fetch stats:', err);
+      }
+    };
+    fetchStats();
   }, []);
 
   const lineData = {
@@ -73,7 +96,7 @@ const Analytics = () => {
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '1.5rem', marginBottom: '3rem' }}>
         {[
-          { label: 'Total Revenue', value: `₹${stats.totalRevenue}`, icon: <IndianRupee size={20}/>, color: '#10b981' },
+          { label: 'Total Revenue', value: `₹${stats.totalRevenue}`, icon: <Banknote size={20}/>, color: '#10b981' },
           { label: 'Bookings', value: stats.totalBookings, icon: <Calendar size={20}/>, color: '#6366f1' },
           { label: 'Customers', value: stats.totalCustomers, icon: <Users size={20}/>, color: '#fbbf24' },
           { label: 'Active Services', value: stats.totalCategories, icon: <TrendingUp size={20}/>, color: '#f43f5e' },

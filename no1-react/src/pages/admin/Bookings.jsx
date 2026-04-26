@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Calendar, Check, X, Clock, User, MessageSquare, Loader2, Search } from 'lucide-react';
-import api from '../../api';
+import { db } from '../../firebase';
+import { collection, getDocs, updateDoc, doc, query, orderBy } from 'firebase/firestore';
 
 const Bookings = () => {
   const [bookings, setBookings] = useState([]);
@@ -15,8 +16,9 @@ const Bookings = () => {
 
   const fetchBookings = async () => {
     try {
-      const res = await api.get('/bookings');
-      setBookings(res.data);
+      const q = query(collection(db, 'bookings'), orderBy('date', 'desc'));
+      const snapshot = await getDocs(q);
+      setBookings(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
     } catch (err) {
       console.error('Error fetching bookings:', err);
     } finally {
@@ -26,7 +28,7 @@ const Bookings = () => {
 
   const updateStatus = async (id, status) => {
     try {
-      await api.put(`/bookings/${id}`, { status });
+      await updateDoc(doc(db, 'bookings', String(id)), { status });
       setBookings(bookings.map(b => b.id === id ? { ...b, status } : b));
     } catch (err) {
       alert('Error updating status: ' + err.message);
@@ -34,8 +36,8 @@ const Bookings = () => {
   };
 
   const filteredBookings = bookings.filter(b => 
-    b.customer.toLowerCase().includes(searchQuery.toLowerCase()) || 
-    b.service.toLowerCase().includes(searchQuery.toLowerCase())
+    (b.customer?.toLowerCase() || '').includes(searchQuery.toLowerCase()) || 
+    (b.service?.toLowerCase() || '').includes(searchQuery.toLowerCase())
   );
 
   const getStatusStyle = (status) => {

@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Edit2, Trash2, IndianRupee, Image as ImageIcon, Save, X, HardDrive, Wifi, WifiOff, Loader2, Search, Layers, Film } from 'lucide-react';
+import { Plus, Edit2, Trash2, Image as ImageIcon, Save, X, HardDrive, Wifi, WifiOff, Loader2, Search, Layers, Film, Database } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import api from '../../api';
+import { db, storage } from '../../firebase';
+import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc } from 'firebase/firestore';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 
 const Services = () => {
   const [services, setServices] = useState([]);
@@ -9,7 +11,7 @@ const Services = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingService, setEditingService] = useState(null);
   const [isUploading, setIsUploading] = useState(false);
-  const [serverStatus, setServerStatus] = useState('checking');
+  const [serverStatus, setServerStatus] = useState('online');
   const [searchQuery, setSearchQuery] = useState('');
   
   const [formData, setFormData] = useState({ 
@@ -26,37 +28,24 @@ const Services = () => {
   useEffect(() => {
     fetchServices();
     fetchCategories();
-    const interval = setInterval(checkStatus, 5000);
-    return () => clearInterval(interval);
   }, []);
-
-  const checkStatus = async () => {
-    try {
-      await api.get('/health');
-      setServerStatus('online');
-    } catch (err) {
-      console.error('Server Status Check Failed:', err);
-      setServerStatus('offline');
-    }
-  };
 
   const fetchServices = async () => {
     try {
-      const res = await api.get('/services');
-      setServices(res.data);
-      setServerStatus('online');
+      const snapshot = await getDocs(collection(db, 'services'));
+      setServices(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
     } catch (err) {
       console.error('Fetch Services Failed:', err);
-      setServerStatus('offline');
     }
   };
 
   const fetchCategories = async () => {
     try {
-      const res = await api.get('/categories');
-      setCategories(res.data);
-      if (res.data.length > 0 && !formData.category) {
-        setFormData(prev => ({ ...prev, category: res.data[0].name }));
+      const snapshot = await getDocs(collection(db, 'categories'));
+      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      setCategories(data);
+      if (data.length > 0 && !formData.category) {
+        setFormData(prev => ({ ...prev, category: data[0].name }));
       }
     } catch (err) {
       console.error('Fetch Categories Failed:', err);
@@ -64,7 +53,6 @@ const Services = () => {
   };
 
   const handleOpenModal = async (service = null) => {
-    console.log('Opening Modal. Service:', service);
     setNewGalleryFiles([]);
     setGalleryMedia([]);
 
@@ -78,12 +66,11 @@ const Services = () => {
         image: service.image || '' 
       });
       
-      // Fetch gallery media
+      // Load gallery media from service document
       try {
-        const res = await api.get(`/services/${service.id}/media`);
-        setGalleryMedia(res.data);
+        setGalleryMedia(service.media || []);
       } catch (err) {
-        console.error('Error fetching service media:', err);
+        console.error('Error loading service media:', err);
       }
     } else {
       setEditingService(null);
@@ -101,54 +88,34 @@ const Services = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    console.log('Submitting form. Editing:', editingService?.id, 'Data:', formData);
-
-    if (serverStatus === 'offline') {
-      alert("⚠️ Backend server is offline. Please start the server to save changes.");
-      return;
-    }
-
     setIsUploading(true);
     try {
       let imageUrl = formData.image;
 
+      // Upload Cover Image if selected
       if (selectedFile) {
-        console.log('Uploading new file...');
-        const data = new FormData();
-        data.append('files', selectedFile);
-        const uploadRes = await api.post('/upload', data, {
-          headers: { 'Content-Type': 'multipart/form-data' }
-        });
-        imageUrl = uploadRes.data.files[0].url;
-      }
-
-      const finalData = { ...formData, image: imageUrl };
-      console.log('Final data to save:', finalData);
-
-      let serviceId = editingService?.id;
-
-      if (editingService && editingService.id) {
-        console.log('Sending PUT request to /services/' + editingService.id);
-        await api.put(`/services/${editingService.id}`, finalData);
-      } else {
-        console.log('Sending POST request to /services');
-        const res = await api.post('/services', finalData);
-        serviceId = res.data.id;
+        const coverRef = ref(storage, `services/${Date.now()}_${selectedFile.name}`);
+        await uploadBytes(coverRef, selectedFile);
+        imageUrl = await getDownloadURL(coverRef);
       }
 
       // Handle Gallery Uploads
+      let newMedia = [...galleryMedia];
       if (newGalleryFiles.length > 0) {
-        console.log('Uploading gallery files:', newGalleryFiles.length);
-        const gData = new FormData();
-        newGalleryFiles.forEach(file => gData.append('files', file));
-        const gRes = await api.post('/upload', gData, {
-          headers: { 'Content-Type': 'multipart/form-data' }
-        });
-        
-        // Link to service
-        for (const fileObj of gRes.data.files) {
-          await api.post(`/services/${serviceId}/media`, fileObj);
+        for (const file of newGalleryFiles) {
+          const fileRef = ref(storage, `gallery/${Date.now()}_${file.name}`);
+          await uploadBytes(fileRef, file);
+          const url = await getDownloadURL(fileRef);
+          newMedia.push({ id: Date.now().toString() + Math.random().toString(), url, type: file.type.startsWith('video') ? 'video' : 'image' });
         }
+      }
+
+      const finalData = { ...formData, image: imageUrl, media: newMedia };
+
+      if (editingService) {
+        await updateDoc(doc(db, 'services', String(editingService.id)), finalData);
+      } else {
+        await addDoc(collection(db, 'services'), finalData);
       }
       
       await fetchServices();
@@ -156,7 +123,7 @@ const Services = () => {
       alert("✅ Service and Gallery saved successfully!");
     } catch (err) {
       console.error('Submit failed:', err);
-      alert('❌ Save Failed: ' + (err.response?.data?.error || err.message));
+      alert('❌ Save Failed: ' + err.message);
     } finally {
       setIsUploading(false);
     }
@@ -165,10 +132,10 @@ const Services = () => {
   const deleteService = async (id) => {
     if (!window.confirm('Are you sure you want to delete this service?')) return;
     try {
-      await api.delete(`/services/${id}`);
+      await deleteDoc(doc(db, 'services', String(id)));
       fetchServices();
     } catch (err) {
-      alert('Error deleting service');
+      alert('Error deleting service: ' + err.message);
     }
   };
 
@@ -182,14 +149,7 @@ const Services = () => {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: '3rem', flexWrap: 'wrap', gap: '2rem' }}>
         <div>
           <h1 style={{ fontSize: '3rem', fontWeight: 800, marginBottom: '0.5rem', letterSpacing: '-1px' }}>Services</h1>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', opacity: 0.6, fontSize: '0.9rem' }}>
-             <span style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-               {serverStatus === 'online' ? <Wifi size={14} color="#10b981" /> : <WifiOff size={14} color="#ef4444" />}
-               {serverStatus.toUpperCase()}
-             </span>
-             <span>|</span>
-             <span style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}><HardDrive size={14} /> Local MySQL Mode</span>
-          </div>
+          <p style={{ opacity: 0.4, fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '0.3rem' }}><Database size={12}/> Firebase Firestore</p>
         </div>
         <div style={{ display: 'flex', gap: '1rem' }}>
           <div style={{ position: 'relative' }}>
@@ -262,14 +222,24 @@ const Services = () => {
                   </div>
                 </div>
 
-                <div className="input-group">
-                  <label style={{ fontSize: '0.8rem', opacity: 0.5, marginBottom: '0.5rem', display: 'block' }}>Category</label>
-                  <select value={formData.category} onChange={(e) => setFormData({...formData, category: e.target.value})} style={{ width: '100%', padding: '0.8rem', background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border)', borderRadius: '12px', color: '#fff' }}>
-                    {categories.map(c => (
-                      <option key={c.id} value={c.name}>{c.name}</option>
-                    ))}
-                    {categories.length === 0 && <option value="">No categories available</option>}
-                  </select>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                  <div className="input-group">
+                    <label style={{ fontSize: '0.8rem', opacity: 0.5, marginBottom: '0.5rem', display: 'block' }}>Category</label>
+                    <select value={formData.category} onChange={(e) => setFormData({...formData, category: e.target.value})} style={{ width: '100%', padding: '0.8rem', background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border)', borderRadius: '12px', color: '#fff' }}>
+                      {categories.map(c => (
+                        <option key={c.id} value={c.name}>{c.name}</option>
+                      ))}
+                      {categories.length === 0 && <option value="">No categories available</option>}
+                    </select>
+                  </div>
+                  <div className="input-group">
+                    <label style={{ fontSize: '0.8rem', opacity: 0.5, marginBottom: '0.5rem', display: 'block' }}>Cover Image</label>
+                    <div style={{ position: 'relative', overflow: 'hidden', borderRadius: '12px', border: '1px solid var(--border)', padding: '0.7rem', display: 'flex', alignItems: 'center', gap: '1rem', background: 'rgba(255,255,255,0.05)' }}>
+                       <ImageIcon size={20} opacity={0.5} />
+                       <span style={{ fontSize: '0.8rem', opacity: 0.5 }}>{selectedFile ? selectedFile.name : 'Choose file...'}</span>
+                       <input type="file" onChange={(e) => setSelectedFile(e.target.files[0])} style={{ position: 'absolute', inset: 0, opacity: 0, cursor: 'pointer' }} />
+                    </div>
+                  </div>
                 </div>
 
                 <div className="input-group">
@@ -281,8 +251,11 @@ const Services = () => {
                         {m.type === 'video' ? <div style={{ width: '100%', height: '100%', background: '#000', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Film size={20} /></div> : <img src={m.url} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />}
                         <button type="button" onClick={async () => {
                           if (window.confirm('Delete this media?')) {
-                            await api.delete(`/media/${m.id}`);
-                            setGalleryMedia(prev => prev.filter(item => item.id !== m.id));
+                            const updatedMedia = galleryMedia.filter(item => item.id !== m.id);
+                            if (editingService) {
+                              await updateDoc(doc(db, 'services', String(editingService.id)), { media: updatedMedia });
+                            }
+                            setGalleryMedia(updatedMedia);
                           }
                         }} style={{ position: 'absolute', top: 2, right: 2, background: 'rgba(239,68,68,0.8)', border: 'none', borderRadius: '50%', width: '20px', height: '20px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#fff' }}><X size={12} /></button>
                       </div>

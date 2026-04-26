@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { TrendingUp, Users, Calendar, IndianRupee, Activity, CheckCircle2, Server } from 'lucide-react';
+import { TrendingUp, Users, Calendar, Banknote, Activity, CheckCircle2, Server, Database } from 'lucide-react';
 import { 
   Chart as ChartJS, 
   CategoryScale, 
@@ -13,7 +13,8 @@ import {
   Filler 
 } from 'chart.js';
 import { Line } from 'react-chartjs-2';
-import api from '../../api';
+import { db } from '../../firebase';
+import { collection, getDocs, query, where } from 'firebase/firestore';
 
 ChartJS.register(
   CategoryScale,
@@ -43,10 +44,26 @@ const Overview = () => {
 
   const fetchStats = async () => {
     try {
-      const res = await api.get('/stats');
-      setStats(res.data);
+      const bookingsSnap = await getDocs(collection(db, "bookings"));
+      const customersSnap = await getDocs(query(collection(db, "users"), where("role", "==", "customer")));
+      const categoriesSnap = await getDocs(collection(db, "categories"));
+      
+      let revenue = 0;
+      bookingsSnap.docs.forEach(doc => {
+        const data = doc.data();
+        if (data.status === 'completed' && data.total_price) {
+          revenue += Number(data.total_price);
+        }
+      });
+
+      setStats({
+        totalBookings: bookingsSnap.size,
+        totalCustomers: customersSnap.size,
+        totalCategories: categoriesSnap.size,
+        totalRevenue: revenue
+      });
     } catch (err) {
-      console.error('Stats fetch error:', err);
+      console.error('Failed to fetch stats:', err);
     } finally {
       setLoading(false);
     }
@@ -68,7 +85,7 @@ const Overview = () => {
   };
 
   const statCards = [
-    { label: 'Total Revenue', val: `₹${stats.totalRevenue}`, icon: <IndianRupee />, color: '#fbbf24', trend: '+12%' },
+    { label: 'Total Revenue', val: `₹${stats.totalRevenue}`, icon: <Banknote />, color: '#fbbf24', trend: '+12%' },
     { label: 'Total Bookings', val: stats.totalBookings, icon: <Calendar />, color: '#6366f1', trend: 'Live' },
     { label: 'Total Customers', val: stats.totalCustomers, icon: <Users />, color: '#f43f5e', trend: '+5%' },
     { label: 'Active Categories', val: stats.totalCategories, icon: <TrendingUp />, color: '#10b981', trend: 'Stable' }
@@ -78,7 +95,7 @@ const Overview = () => {
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
       <div style={{ marginBottom: '3.5rem' }}>
         <h1 style={{ fontSize: '3rem', fontWeight: 800, marginBottom: '0.5rem', letterSpacing: '-1px' }}>Dashboard Overview</h1>
-        <p style={{ opacity: 0.5, fontSize: '1.1rem' }}>Performance metrics for NO1 Events local server.</p>
+        <p style={{ opacity: 0.5, fontSize: '1.1rem' }}>Performance metrics for NO1 Events platform.</p>
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '1.5rem', marginBottom: '3rem' }}>
@@ -130,9 +147,9 @@ const Overview = () => {
           <h3 style={{ marginBottom: '2rem' }}>Infrastructure Status</h3>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
              {[
-               { label: 'Local Server Connection', status: 'Stable', icon: <Server size={18}/>, color: '#10b981' },
-               { label: 'MySQL Database', status: 'Active', icon: <Activity size={18}/>, color: '#10b981' },
-               { label: 'Storage Engine', status: 'Operational', icon: <CheckCircle2 size={18}/>, color: '#10b981' }
+               { label: 'Local API Server', status: 'Online', icon: <Server size={18}/>, color: '#10b981' },
+               { label: 'MySQL Database', status: 'Connected', icon: <Database size={18}/>, color: '#10b981' },
+               { label: 'Multer Storage', status: 'Operational', icon: <CheckCircle2 size={18}/>, color: '#10b981' }
              ].map((item, i) => (
                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '1rem', padding: '1.2rem', background: 'rgba(255,255,255,0.02)', borderRadius: '15px' }}>
                   <div style={{ color: item.color }}>{item.icon}</div>

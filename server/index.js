@@ -87,6 +87,16 @@ app.get('/api/services', async (req, res) => {
     }
 });
 
+app.get('/api/services/:id', async (req, res) => {
+    try {
+        const [[service]] = await db.execute('SELECT * FROM services WHERE id = ?', [req.params.id]);
+        if (!service) return res.status(404).json({ error: 'Service not found' });
+        res.json(service);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
 app.post('/api/services', async (req, res) => {
     const { name, description, price, category, image } = req.body;
     try {

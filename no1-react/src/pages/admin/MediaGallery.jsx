@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Upload, Trash2, Eye, Play, Film, Image as ImageIcon, Loader2 } from 'lucide-react';
-import api from '../../api';
+import { db, storage } from '../../firebase';
+import { collection, getDocs, addDoc, deleteDoc, doc } from 'firebase/firestore';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 
 const MediaGallery = () => {
   const [media, setMedia] = useState([]);
@@ -13,8 +15,8 @@ const MediaGallery = () => {
 
   const fetchMedia = async () => {
     try {
-      const res = await api.get('/media');
-      setMedia(res.data);
+      const snapshot = await getDocs(collection(db, 'media'));
+      setMedia(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
     } catch (err) {
       console.error('Error fetching media:', err);
     } finally {
@@ -25,10 +27,10 @@ const MediaGallery = () => {
   const handleDelete = async (id) => {
     if (!window.confirm('Are you sure you want to delete this asset?')) return;
     try {
-      await api.delete(`/media/${id}`);
+      await deleteDoc(doc(db, 'media', String(id)));
       setMedia(media.filter(item => item.id !== id));
     } catch (err) {
-      alert('Delete failed');
+      alert('Delete failed: ' + err.message);
     }
   };
 
@@ -36,15 +38,22 @@ const MediaGallery = () => {
     const files = e.target.files;
     if (!files.length) return;
     
-    const formData = new FormData();
-    for (let file of files) formData.append('files', file);
-
+    setLoading(true);
     try {
-      setLoading(true);
-      await api.post('/upload', formData);
+      for (const file of Array.from(files)) {
+        const fileRef = ref(storage, `media/${Date.now()}_${file.name}`);
+        await uploadBytes(fileRef, file);
+        const url = await getDownloadURL(fileRef);
+        const type = file.type.startsWith('video/') ? 'video' : 'image';
+        
+        await addDoc(collection(db, 'media'), {
+          url: url,
+          type: type
+        });
+      }
       fetchMedia();
     } catch (err) {
-      alert('Upload failed');
+      alert('Upload failed: ' + err.message);
     } finally {
       setLoading(false);
     }
@@ -77,7 +86,7 @@ const MediaGallery = () => {
           {media.length === 0 && (
              <div style={{ gridColumn: 'span 3', textAlign: 'center', padding: '5rem', opacity: 0.2 }}>
                 <ImageIcon size={64} style={{ marginBottom: '1rem' }} />
-                <h3>No media found in local storage</h3>
+                <h3>No media found</h3>
              </div>
           )}
           {media.map((item, i) => (
@@ -94,13 +103,13 @@ const MediaGallery = () => {
                   <Film size={48} opacity={0.3} />
                 </div>
               ) : (
-                <img src={item.url} style={{ width: '100%', height: '100%', objectFit: 'cover' }} alt="Media" />
+                <img src={item.url} style={{ width: '100%', height: '100%', objectFit: 'cover' }} alt="Media" onError={(e) => e.target.src = '/assets/hero.png'} />
               )}
               
               <div className="gallery-overlay" style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.8)', backdropFilter: 'blur(5px)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '1.5rem', opacity: 0, transition: '0.4s cubic-bezier(0.4, 0, 0.2, 1)' }}>
-                <button style={{ background: 'rgba(255,255,255,0.1)', color: '#fff', border: '1px solid rgba(255,255,255,0.2)', width: '50px', height: '50px', borderRadius: '15px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
+                <a href={item.url} target="_blank" rel="noreferrer" style={{ background: 'rgba(255,255,255,0.1)', color: '#fff', border: '1px solid rgba(255,255,255,0.2)', width: '50px', height: '50px', borderRadius: '15px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', textDecoration: 'none' }}>
                   {item.type === 'video' ? <Play size={20} fill="#fff" /> : <Eye size={20} />}
-                </button>
+                </a>
                 <button 
                   onClick={() => handleDelete(item.id)}
                   style={{ background: 'rgba(239, 68, 68, 0.2)', color: '#ef4444', border: '1px solid rgba(239, 68, 68, 0.3)', width: '50px', height: '50px', borderRadius: '15px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}

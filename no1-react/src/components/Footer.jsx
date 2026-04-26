@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import api from '../api';
+import { db } from '../firebase';
+import { doc, getDoc } from 'firebase/firestore';
 
 const Footer = () => {
   const [settings, setSettings] = useState({
@@ -12,11 +13,18 @@ const Footer = () => {
   });
 
   useEffect(() => {
-    api.get('/settings')
-      .then(res => {
-        if (res.data) setSettings(res.data);
-      })
-      .catch(err => console.error('Error fetching settings for footer:', err));
+    const fetchSettings = async () => {
+      try {
+        const docRef = doc(db, "settings", "main");
+        const docSnap = await getDoc(docRef);
+        if (docSnap.exists()) {
+          setSettings(docSnap.data());
+        }
+      } catch (err) {
+        console.error('Error fetching settings for footer:', err);
+      }
+    };
+    fetchSettings();
   }, []);
 
   const scrollToSection = (id) => {

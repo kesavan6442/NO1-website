@@ -41,8 +41,9 @@ const upload = multer({ storage });
 // Multi-file Upload Endpoint
 app.post('/api/upload', upload.array('files'), (req, res) => {
     try {
+        const baseUrl = process.env.BASE_URL || `http://localhost:${PORT}`;
         const fileUrls = req.files.map(file => ({
-            url: `http://127.0.0.1:5000/uploads/${file.filename}`,
+            url: `${baseUrl}/uploads/${file.filename}`,
             type: file.mimetype.startsWith('video') ? 'video' : 'image'
         }));
         res.json({ success: true, files: fileUrls });

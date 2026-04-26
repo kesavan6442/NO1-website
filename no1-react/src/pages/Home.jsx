@@ -68,7 +68,7 @@ const Home = () => {
           <motion.div initial={{ opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1 }} transition={{ duration: 0.8 }} style={{ position: 'relative', width: '100%' }}>
             <div style={{ position: 'absolute', top: '-20px', left: '-20px', width: '100px', height: '100px', background: 'var(--accent)', borderRadius: '20px', zIndex: -1, opacity: 0.5 }}></div>
             <img 
-              src={settings.hero_image?.startsWith('http') ? settings.hero_image : `http://127.0.0.1:5000${settings.hero_image || '/assets/hero.png'}`} 
+              src={settings.hero_image?.startsWith('http') ? settings.hero_image : `${import.meta.env.VITE_IMAGE_BASE_URL || 'http://127.0.0.1:5000'}${settings.hero_image || '/assets/hero.png'}`} 
               style={{ 
                 width: '100%', 
                 height: 'auto',

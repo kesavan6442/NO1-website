@@ -1,9 +1,7 @@
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import { Link, useNavigate } from 'react-router-dom';
-import { auth, db } from '../firebase';
-import { createUserWithEmailAndPassword, updateProfile } from 'firebase/auth';
-import { doc, setDoc } from 'firebase/firestore';
+import api from '../api';
 
 const Signup = () => {
   const [name, setName] = useState('');
@@ -16,25 +14,11 @@ const Signup = () => {
     e.preventDefault();
     setLoading(true);
     try {
-      // 1. Create user in Firebase Auth
-      const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-      const user = userCredential.user;
-
-      // 2. Update profile name
-      await updateProfile(user, { displayName: name });
-
-      // 3. Create user document in Firestore
-      await setDoc(doc(db, "users", user.uid), {
-        name: name,
-        email: email,
-        role: email === 'kesavan.mcse@gmail.com' ? 'admin' : 'customer',
-        createdAt: new Date().toISOString()
-      });
-
+      await api.post('/signup', { name, email, password });
       alert('Account created successfully!');
       navigate('/login');
     } catch (err) {
-      alert('Signup failed: ' + err.message);
+      alert('Signup failed: ' + (err.response?.data?.error || err.message));
     } finally {
       setLoading(false);
     }

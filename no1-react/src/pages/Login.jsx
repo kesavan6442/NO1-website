@@ -2,8 +2,7 @@ import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { Mail, Lock, Eye, EyeOff, User, ArrowLeft } from 'lucide-react';
-import { auth } from '../firebase';
-import { signInWithEmailAndPassword } from 'firebase/auth';
+import api from '../api';
 
 const Login = () => {
   const [email, setEmail] = useState('');
@@ -16,15 +15,17 @@ const Login = () => {
     e.preventDefault();
     setLoading(true);
     try {
-      const userCredential = await signInWithEmailAndPassword(auth, email, password);
-      const user = userCredential.user;
+      const response = await api.post('/login', { email, password });
+      const { token, user } = response.data;
       
+      localStorage.setItem('token', token);
+      localStorage.setItem('user', JSON.stringify(user));
       localStorage.setItem('isLoggedIn', 'true');
-      localStorage.setItem('isAdmin', user.email === 'kesavan.mcse@gmail.com' ? 'true' : 'false');
+      localStorage.setItem('isAdmin', user.role === 'admin' ? 'true' : 'false');
       
-      navigate(user.email === 'kesavan.mcse@gmail.com' ? '/admin' : '/');
+      navigate(user.role === 'admin' ? '/admin' : '/');
     } catch (err) {
-      alert('Login failed: ' + err.message);
+      alert('Login failed: ' + (err.response?.data?.error || err.message));
     } finally {
       setLoading(false);
     }
